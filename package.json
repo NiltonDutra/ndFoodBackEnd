@@ -1,0 +1,14 @@
+{
+  "name": "ndfood-backend",
+  "version": "1.0.0",
+  "description": "API NDfood desenvolvida por Nilton Dutra",
+  "main": "index.js",
+  "scripts": {
+    "start": "node src/server.js "
+  },
+  "author": "Nilton Dutra",
+  "license": "ISC",
+  "dependencies": {
+    "express": "^4.18.3"
+  }
+}
