@@ -1,27 +1,22 @@
-// Router, Multer and uploadConfig Import
-const { Router } = require('express');
-const multer = require('multer');
-const uploadConfig = require('../configs/upload');
+const { Router } = require("express");
+const multer = require("multer");
+const uploadConfig = require("../configs/upload");
 
-// Controllers Import and Initialization
-const ensureAuthenticated = require('../middlewares/ensureAuthenticated');
-const DishesController = require("../controllers/DishesController")
+const DishesController = require("../controllers/DishesController");
+const ensureAuthenticated = require("../middlewares/ensureAuthenticated");
+const checkAdminPermission = require("../middlewares/checkAdminPermission");
 
-const dishesController = new DishesController();
-
-// Initializing Router and Upload
 const dishesRoutes = Router();
 const upload = multer(uploadConfig.MULTER);
 
-// Requiring Authentication
+const dishesController = new DishesController();
+
 dishesRoutes.use(ensureAuthenticated);
 
-// Dishes Routes
-dishesRoutes.post("/", upload.single("image"), dishesController.create);
 dishesRoutes.get("/", dishesController.index);
+dishesRoutes.post("/", checkAdminPermission, upload.single("image"), dishesController.create);
 dishesRoutes.get("/:id", dishesController.show);
-dishesRoutes.delete("/:id", dishesController.delete);
-dishesRoutes.put("/:id", upload.single("image"), dishesController.update);
+dishesRoutes.delete("/:id", checkAdminPermission, dishesController.delete);
+dishesRoutes.patch("/:id", checkAdminPermission, upload.single("image"), dishesController.update);
 
-// Export
 module.exports = dishesRoutes;

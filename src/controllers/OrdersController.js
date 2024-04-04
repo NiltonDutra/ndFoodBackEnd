@@ -1,108 +1,117 @@
-// Knex Import
 const knex = require("../database/knex");
 
 class OrdersController {
-    async create(request, response) {
-        // Capturing Body Parameters and ID Parameters
-        const { cart, orderStatus, totalPrice, paymentMethod } = request.body;
-        const user_id = request.user.id;
+  async create(request, response) {
+    const { status, price, payment_method, order_items } = request.body;
+    const user_id = request.user.id;
 
-        // Inserting Order infos into the database
-        const order_id = await knex("orders").insert({
-            orderStatus,
-            totalPrice,
-            paymentMethod,
-            user_id
-        });
+    const [order_id] = await knex("orders").insert({
+      status,
+      price,
+      payment_method,
+      created_by: user_id,
+    });
 
-        // Inserting Items infos into the database
-        const itemsInsert = cart.map(cart => {
-            return {
-                title: cart.title,
-                quantity: cart.quantity,
-                dish_id: cart.id,
-                order_id
-            }
-        });
+    const itemsInsert = order_items.map(async ({ dish_id, quantity }) => {
+      const { name } = await knex("dishes").select("name").where({ id: dish_id }).first();
 
-        await knex("ordersItems").insert(itemsInsert);
+      return {
+        order_id,
+        dish_id,
+        name,
+        quantity,
+      };
+    });
 
-        return response.status(201).json(order_id);
-    }
+    await knex("order_items").insert(await Promise.all(itemsInsert));
 
-    async index(request, response) {
-        // Capturing ID Parameters
-        const user_id = request.user.id;
+    return response.json();
+  }
 
-        // Getting the user data through the informed ID
-        const user = await knex("users").where({id: user_id}).first();
+  async show(request, response) {
+    const { id } = request.params;
 
-        // Listing Orders and OrdersItems at the same time (innerJoin) to User
-        if (!user.isAdmin) {
+    const order = await knex("orders").where({ id }).first();
+    const order_items = await knex("order_items")
+      .where({ order_id: id })
+      .orderBy("name");
 
-            const orders = await knex("ordersItems").where({ user_id })
-                .select([
-                    "orders.id",
-                    "orders.user_id",
-                    "orders.orderStatus",
-                    "orders.totalPrice",
-                    "orders.paymentMethod",
-                    "orders.created_at",
-                ])
+    return response.json({
+      ...order,
+      order_items,
+    });
+  }
+  
+  async update(request, response) {
+    const { id } = request.params;
+    const { status, price, payment_method } = request.body;
 
-                .innerJoin("orders", "orders.id", "ordersItems.order_id")
-                .groupBy("orders.id")
-            
-            const ordersItems = await knex("ordersItems") 
-            const ordersWithItems = orders.map(order => {
-                const orderItem = ordersItems.filter(item => item.order_id === order.id);
+    const order = await knex("orders").where({ id }).first();
 
-                return {
-                    ...order,
-                    items: orderItem
-                }
-            })
-            
-            return response.status(200).json(ordersWithItems);
+    const orderUpdate = {
+      status: status ?? order.status,
+      price: price ?? order.price,
+      payment_method: payment_method ?? order.payment_method,
+    };
 
-        // Listing Orders and OrdersItems at the same time (innerJoin) to Admin
-        } else {
-            const orders = await knex("ordersItems")
-                .select([
-                    "orders.id",
-                    "orders.user_id",
-                    "orders.orderStatus",
-                    "orders.totalPrice",
-                    "orders.paymentMethod",
-                    "orders.created_at",
-                ])
+    await knex("orders").where({ id }).update(orderUpdate);
 
-                .innerJoin("orders", "orders.id", "ordersItems.order_id")
-                .groupBy("orders.id")
-        
-            const ordersItems = await knex("ordersItems") 
-            const ordersWithItems = orders.map(order => {
-                const orderItem = ordersItems.filter(item => item.order_id === order.id);
+    return response.json();
+  }
 
-                return {
-                    ...order,
-                    items: orderItem
-                }
-            })
-        
-            return response.status(200).json(ordersWithItems);
-        }
-    }
+  async delete(request, response) {
+    const { id } = request.params;
 
-    async update(request, response) {
-        // Capturing Body Parameters
-        const { id, orderStatus } = request.body;
-    
-        // Updating Order infos through the informed ID
-        await knex("orders").update({ orderStatus }).where({ id })
-        
-        return response.status(201).json();
-    }
+    await knex("orders").where({ id }).delete();
+
+    return response.json();
+  }
+
+  async index(request, response) {
+    const user_id = request.user.id;
+
+    const user = await knex("users").where({ id: user_id }).first();
+
+    let orders;
+
+    if(user.is_admin) {
+      orders = await knex("orders")
+        .select([
+          "orders.id",
+          "orders.status",
+          "orders.price",
+          "orders.payment_method",
+          "users.name as created_by",
+          "orders.created_at",
+        ])
+        .innerJoin("users", "users.id", "orders.created_by")
+        .orderBy("orders.created_at", "desc");
+      } else {
+        orders = await knex("orders")
+          .select([
+            "orders.id",
+            "orders.status",
+            "orders.price",
+            "orders.payment_method",
+            "orders.created_at",
+          ])
+          .where({ created_by: user_id })
+          .orderBy("orders.created_at", "desc");
+      }
+
+    const ordersDishes = await knex("order_items");
+    const ordersWithDishes = orders.map((order) => {
+      const orderDishes = ordersDishes.filter((dish) => dish.order_id === order.id);
+      const filteredDishes = user.is_admin ? orderDishes : orderDishes.map(({ name, quantity }) => ({ name, quantity }));
+
+      return {
+        ...order,
+        dishes: filteredDishes,
+      };
+    });
+
+    return response.json(ordersWithDishes);
+  }
 }
 
 module.exports = OrdersController;
